@@ -5,7 +5,7 @@
 .tools/
 artifacts/
 TestResults/
-models/
+/models/
 outputs/
 *.safetensors
 *.onnx
