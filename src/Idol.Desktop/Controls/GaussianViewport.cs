@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Idol.Core;
+using Idol.Core.Rendering;
 
 namespace Idol.Desktop.Controls;
 
@@ -18,8 +19,12 @@ public sealed class GaussianViewport : FrameworkElement
     private bool _dragging, _panning;
     private BitmapSource? _bitmap;
     private CancellationTokenSource? _renderCancellation;
-    private static readonly float[] Falloff = Enumerable.Range(0, 2049).Select(i => MathF.Exp(-.5f * i * 9 / 2048)).ToArray();
-    public int PreviewBudget { get; set; } = 20000;
+    private bool _renderAgain;
+    private TaskCompletionSource _renderIdle = CompletedRenderSignal();
+    public bool IsRendering { get; private set; }
+    public bool IsInteractiveFrame { get; private set; }
+    public int SubmittedCount { get; private set; }
+    public string? RenderError { get; private set; }
     public int DisplayedCount { get; private set; }
     public event EventHandler? ViewChanged;
 
@@ -29,11 +34,15 @@ public sealed class GaussianViewport : FrameworkElement
         ClipToBounds = true;
         Cursor = Cursors.Hand;
         SizeChanged += (_, _) => RequestRender();
-        Unloaded += (_, _) => _renderCancellation?.Cancel();
+        Loaded += (_, _) => RequestRender();
+        Unloaded += (_, _) => { _renderAgain = false; _renderCancellation?.Cancel(); };
     }
 
     public void SetCloud(GaussianCloud? cloud)
     {
+        _renderCancellation?.Cancel();
+        SubmittedCount = DisplayedCount = 0;
+        RenderError = null;
         _cloud = cloud; _bitmap = null; _bounds = cloud?.GetBounds() ?? (new Vector3(-.5f), new Vector3(.5f));
         ResetCamera();
     }
@@ -114,7 +123,11 @@ public sealed class GaussianViewport : FrameworkElement
     {
         base.OnMouseUp(e); _dragging = false; ReleaseMouseCapture(); RequestRender();
     }
-    protected override void OnLostMouseCapture(MouseEventArgs e) { base.OnLostMouseCapture(e); _dragging = false; }
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (_dragging) { _dragging = false; RequestRender(); }
+    }
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e); if (!_dragging) return;
@@ -138,86 +151,69 @@ public sealed class GaussianViewport : FrameworkElement
         base.OnKeyDown(e); if (e.Key == Key.Home || e.Key == Key.F) { ResetCamera(); e.Handled = true; }
     }
 
-    private async void RequestRender()
+    private void RequestRender()
     {
         InvalidateVisual();
-        _renderCancellation?.Cancel();
-        if (_cloud == null || ActualWidth < 1 || ActualHeight < 1) return;
-        var cancellation = new CancellationTokenSource(); _renderCancellation = cancellation;
-        var camera = Camera(); var cloud = _cloud;
-        var width = Math.Max(1, Math.Min(1100, (int)ActualWidth));
-        var height = Math.Max(1, (int)(ActualHeight * width / ActualWidth));
-        var budget = _dragging ? Math.Min(5000, PreviewBudget) : PreviewBudget;
-        try
-        {
-            var result = await Task.Run(() => Render(cloud, camera, width, height, budget, cancellation.Token), cancellation.Token);
-            if (cancellation.IsCancellationRequested || _cloud != cloud) return;
-            var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, result.Pixels, width * 4);
-            bitmap.Freeze(); _bitmap = bitmap; DisplayedCount = result.Count;
-            InvalidateVisual(); ViewChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (OperationCanceledException) { }
-        finally { cancellation.Dispose(); if (_renderCancellation == cancellation) _renderCancellation = null; }
+        if (!IsLoaded || _cloud == null || ActualWidth < 1 || ActualHeight < 1) return;
+        _renderAgain = true;
+        if (_renderIdle.Task.IsCompleted) _renderIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!IsRendering) RenderPendingFrames();
     }
 
-    private readonly record struct Projected(float X, float Y, float Depth, float A, float B, float C, float RadiusX, float RadiusY, Vector3 Color, float Opacity);
-    private static (byte[] Pixels, int Count) Render(GaussianCloud cloud, (Vector3 Eye, Vector3 Right, Vector3 Up, Vector3 Forward) camera, int width, int height, int budget, CancellationToken cancellation)
+    public async Task WaitForRenderAsync()
     {
-        var list = new List<Projected>(Math.Min(budget, cloud.Count));
-        float f = height * 1.2071f;
-        var stride = Math.Max(1, (int)Math.Ceiling(cloud.Count / (double)budget));
-        for (int i = 0; i < cloud.Count; i += stride)
+        await _renderIdle.Task;
+        if (RenderError != null) throw new InvalidOperationException(RenderError);
+    }
+
+    private static TaskCompletionSource CompletedRenderSignal()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        completion.SetResult(); return completion;
+    }
+
+    // Coalesce camera changes instead of continuously canceling a million-point
+    // projection. Every frame submits the whole cloud. Dragging reduces image
+    // resolution, then the last camera pose is refined at normal resolution.
+    private async void RenderPendingFrames()
+    {
+        IsRendering = true;
+        ViewChanged?.Invoke(this, EventArgs.Empty);
+        try
         {
-            if ((i & 63) == 0) cancellation.ThrowIfCancellationRequested();
-            var g = cloud.Points[i]; var opacity = Math.Min(.99f, g.Opacity);
-            if (!g.IsFinite || opacity < .01f) continue;
-            var relative = g.Position - camera.Eye;
-            float x = Vector3.Dot(relative, camera.Right), y = Vector3.Dot(relative, camera.Up), z = Vector3.Dot(relative, camera.Forward);
-            if (z < .01f) continue;
-            var sx = width * .5f + f * x / z; var sy = height * .5f - f * y / z;
-            var jx = camera.Right * (f / z) - camera.Forward * (f * x / (z * z));
-            var jy = -camera.Up * (f / z) + camera.Forward * (f * y / (z * z));
-            var s = g.Scale;
-            var ax = Vector3.Transform(new Vector3(s.X, 0, 0), g.Rotation);
-            var ay = Vector3.Transform(new Vector3(0, s.Y, 0), g.Rotation);
-            var az = Vector3.Transform(new Vector3(0, 0, s.Z), g.Rotation);
-            var dx = new Vector3(Vector3.Dot(ax, jx), Vector3.Dot(ay, jx), Vector3.Dot(az, jx));
-            var dy = new Vector3(Vector3.Dot(ax, jy), Vector3.Dot(ay, jy), Vector3.Dot(az, jy));
-            var xx = Vector3.Dot(dx, dx) + .3f; var yy = Vector3.Dot(dy, dy) + .3f; var xy = Vector3.Dot(dx, dy);
-            var det = xx * yy - xy * xy;
-            if (!float.IsFinite(det) || det < 1e-12f) continue;
-            var rx = Math.Min(180, 3 * MathF.Sqrt(xx)); var ry = Math.Min(180, 3 * MathF.Sqrt(yy));
-            if (sx + rx < 0 || sy + ry < 0 || sx - rx >= width || sy - ry >= height) continue;
-            list.Add(new(sx, sy, z, yy / det, -xy / det, xx / det, rx, ry, g.Color, opacity));
-        }
-        list.Sort((a, b) => b.Depth.CompareTo(a.Depth));
-        var pixels = new byte[checked(width * height * 4)];
-        var rgb = new float[pixels.Length];
-        int rendered = 0;
-        foreach (var g in list)
-        {
-            if ((rendered++ & 63) == 0) cancellation.ThrowIfCancellationRequested();
-            int x0 = Math.Max(0, (int)(g.X - g.RadiusX)), x1 = Math.Min(width - 1, (int)(g.X + g.RadiusX));
-            int y0 = Math.Max(0, (int)(g.Y - g.RadiusY)), y1 = Math.Min(height - 1, (int)(g.Y + g.RadiusY));
-            for (int y = y0; y <= y1; ++y)
+            while (_renderAgain && _cloud != null && ActualWidth >= 1 && ActualHeight >= 1)
             {
-                var dy = y + .5f - g.Y;
-                for (int x = x0; x <= x1; ++x)
+                _renderAgain = false;
+                var cloud = _cloud;
+                var camera = Camera();
+                var interactive = _dragging;
+                var scale = Math.Min(1, Math.Min(1100 / ActualWidth, 1100 / ActualHeight)) * (interactive ? .4 : 1);
+                int width = Math.Max(1, (int)(ActualWidth * scale));
+                int height = Math.Max(1, (int)(ActualHeight * scale));
+                using var cancellation = new CancellationTokenSource();
+                _renderCancellation = cancellation;
+                try
                 {
-                    var dx = x + .5f - g.X;
-                    var q = g.A * dx * dx + 2 * g.B * dx * dy + g.C * dy * dy;
-                    if (q > 9 || q < 0) continue;
-                    var alpha = g.Opacity * Falloff[Math.Clamp((int)(q * (2048f / 9)), 0, 2048)];
-                    if (alpha < 1f / 255) continue;
-                    var p = (y * width + x) * 4; var inv = 1 - alpha;
-                    rgb[p] = g.Color.Z * alpha + rgb[p] * inv;
-                    rgb[p + 1] = g.Color.Y * alpha + rgb[p + 1] * inv;
-                    rgb[p + 2] = g.Color.X * alpha + rgb[p + 2] * inv;
-                    rgb[p + 3] = alpha + rgb[p + 3] * inv;
+                    var result = await Task.Run(() => GaussianRasterizer.Render(cloud,
+                        new SplatCamera(camera.Eye, camera.Right, camera.Up, camera.Forward),
+                        width, height, cancellation.Token), cancellation.Token);
+                    if (cancellation.IsCancellationRequested || _cloud != cloud) continue;
+                    var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, result.Pixels, width * 4);
+                    bitmap.Freeze(); _bitmap = bitmap;
+                    SubmittedCount = result.SubmittedCount; DisplayedCount = result.VisibleCount;
+                    IsInteractiveFrame = interactive; RenderError = null;
+                    InvalidateVisual(); ViewChanged?.Invoke(this, EventArgs.Empty);
                 }
+                catch (OperationCanceledException) { }
+                catch (Exception error) { RenderError = error.Message; _renderAgain = false; }
+                finally { if (_renderCancellation == cancellation) _renderCancellation = null; }
             }
         }
-        for (int i = 0; i < pixels.Length; ++i) pixels[i] = (byte)Math.Clamp((int)(rgb[i] * 255 + .5f), 0, 255);
-        return (pixels, list.Count);
+        finally
+        {
+            IsRendering = false;
+            _renderIdle.TrySetResult();
+            ViewChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

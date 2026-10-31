@@ -181,7 +181,10 @@ public partial class MainWindow : Window
 
     private void UpdateObjectInfo()
     {
-        ObjectInfo.Text = _cloud == null ? "3D VIEWPORT" : $"{_cloud.Count:N0} GAUSSIANS  /  {Viewport.DisplayedCount:N0} IN PREVIEW";
+        ObjectInfo.Text = _cloud == null ? "3D VIEWPORT" :
+            Viewport.RenderError != null ? "VIEWPORT ERROR: " + Viewport.RenderError :
+            $"{_cloud.Count:N0} GAUSSIANS  /  " + (Viewport.IsRendering ? "RENDERING FULL DENSITY" :
+                Viewport.IsInteractiveFrame ? "FULL DENSITY · REFINING" : "FULL DENSITY");
     }
 
     private void ResetView_Click(object sender, RoutedEventArgs e) => Viewport.ResetCamera();
@@ -230,8 +233,10 @@ public partial class MainWindow : Window
 
     public async Task CaptureAsync(string path)
     {
-        await Task.Delay(1800);
         UpdateLayout();
+        await Viewport.WaitForRenderAsync();
+        await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Render);
+        await Viewport.WaitForRenderAsync();
         var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(this);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));

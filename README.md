@@ -59,7 +59,9 @@ CPU-only desktop builds select **Use CPU** automatically. Full model generation 
 3. Drag with the left mouse button to orbit; right/middle drag or Shift-drag to pan; scroll to zoom; press **F** or **Reset view** to frame the object.
 4. Save the full **PLY**, export a **Unity ZIP**, or save an **OBJ proxy**.
 
-The viewer uses a depth-sorted, anisotropic Gaussian preview with at most 20,000 splats (5,000 while dragging). Exports retain every Gaussian. The default output is 65,536 Gaussians; higher settings cost more memory and time. Cancellation occurs between model blocks/steps, and interrupted downloads resume.
+The viewer submits **every Gaussian** to its depth-sorted, anisotropic splat renderer. It uses parallel image tiles to keep full-density rendering practical; while dragging it temporarily lowers image resolution, then refines the last camera pose at normal resolution. It never skips Gaussians to meet a point budget. The default output is 65,536 Gaussians; higher settings cost more memory and time. Cancellation occurs between model blocks/steps, and interrupted downloads resume.
+
+For rendered or AI-generated inputs, clear **Real photograph**. This selects Idol's synthetic mode (crop margin 1.2); photographs use real mode (margin 1.7). Input mode affects framing, and matches the [upstream SDK's guidance](https://github.com/speridlabs/idol-sdk#inference).
 
 Model files are cached under `%LOCALAPPDATA%\Idol\models`. Prepared images and predicted camera JSON files are saved locally under `%LOCALAPPDATA%\Idol\outputs`. Once the exact model files are cached, generation does not require network access. Downloads use pinned upstream revisions and SHA-256 validation for weight files.
 

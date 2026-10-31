@@ -5,7 +5,7 @@ Recorded on 2026-10-31. Windows x64; .NET SDK 9.0.200; TorchSharp 0.107.0 / LibT
 ## Checks performed
 
 - Release solution build with the CPU runtime: **passed, zero warnings/errors**.
-- Release solution build with the CUDA runtime: **passed, zero warnings/errors**. Public-checkpoint integration includes the full 8,192-token denoiser on the RTX 4060. The final 34-test suite also covers all three DINO checkpoint naming layouts and the positive-Z to positive-Y conversion.
+- Release solution build with the CUDA runtime: **passed, zero warnings/errors**. All **42 tests passed** with public-checkpoint integration enabled, including the full 8,192-token denoiser on the RTX 4060. Tests also cover all three DINO checkpoint naming layouts and the positive-Z to positive-Y conversion.
 - Native component tests: safetensors F32/F16/BF16 and integer buffers, invalid checkpoint ranges, attention chunking, rotary/absolute embeddings, tiny full denoiser, Euler time grid/camera math, octree resampling, deformable convolution, DINO prefix tokens/norm and VAE posterior/packing.
 - Preprocessing tests: empty foreground rejection and transparent-image framing/black compositing.
 - Download tests: gated access preflight, resumed HTTP range downloads, SHA-256 verification and corrupt-file rejection.
@@ -19,11 +19,19 @@ Recorded on 2026-10-31. Windows x64; .NET SDK 9.0.200; TorchSharp 0.107.0 / LibT
 - WPF conversion flow: selected a real photograph through the same method called by Browse, ran the complete 50-step GPU pipeline, displayed the input and 65,536-Gaussian result, captured the window and exited successfully. The generated object stood upright. About 6 GB total device memory use was observed during sampling; this is not a measured peak-memory benchmark.
 - Unity 6000.2.6f1: batch import created a prefab with the expected two-Gaussian data asset; quaternion convention was checked; shader reported zero compilation errors; scene was saved. A Direct3D11 camera render produced 1,142 non-black splat pixels. The actual photo-converted object also imported as a prefab with all 65,536 Gaussians and rendered successfully.
 
+## Full-density rendering correction
+
+The original desktop viewer submitted only about 20,000 splats even for a million-Gaussian result. This produced conspicuous holes that were display artifacts. The replacement renderer projects all input Gaussians, sorts deterministically and composites image tiles in parallel. It retains low-alpha splats down to the shader's per-pixel 1/255 threshold and removes the old 180-pixel support cap. During interaction only image resolution changes; point density is retained.
+
+An exact reproduction at 1,048,576 Gaussians, real mode, seed 42 and 50 steps was generated and saved locally. Rendering that same cloud with the same camera submitted 19,785 points for the old stride-53 preview and 1,048,576 points for full density. The sparse view reproduced the reported perforation; full density showed a smooth object. Full rendering at 900×620 took approximately 0.53 seconds on this machine. Eight rendering regression tests cover dense coverage, alpha/depth ordering, rotated covariance, large splat support, low-alpha contributions, culling counts, determinism and cancellation.
+
+All six cached model checkpoint hashes were rechecked against the original pinned manifest and matched. This correction changes rendering only; inference equations, model weights and generation settings were left intact. User images, model outputs and comparison artifacts remain local and are excluded from the public repository.
+
 ## Limits
 
 The gated DINOv3 and FLUX.2 model files require both account approval and gated-repository **read** permission on the token. Both access checks passed for the full conversion above. Credentials are not part of this record or the repository.
 
-The full pipeline ran on one photograph; this does not establish general reconstruction quality or numerical parity with the original SDK. No reference Python implementation was run. The README sphere remains an explicitly labeled synthetic viewer fixture. Outputs retain partial objects and source-image cropping; hidden surfaces are generated guesses, and results are not watertight meshes.
+The full pipeline ran on a photograph and a generated character image; these examples do not establish general reconstruction quality or numerical parity with the original SDK. No reference Python implementation was run. The README sphere remains an explicitly labeled synthetic viewer fixture. Outputs retain partial objects and source-image cropping; hidden surfaces are generated guesses, and results are not watertight meshes.
 
 Bit-identical results with the SDK are not promised: the octree samples the same stratified distribution but draws random offsets in a different order, image resampling uses a C# implementation, and backend precision/kernels differ. Performance, complete image-conditioned GPU peak memory, SRP/XR rendering, multiple overlapping splat objects and Unity player builds need further validation.
 
