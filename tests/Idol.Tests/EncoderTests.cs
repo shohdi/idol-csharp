@@ -63,8 +63,11 @@ public sealed class EncoderTests
         Assert.Throws<ArgumentException>(() => ImagePreprocessor.FrameAlpha(empty));
     }
 
-    [Fact]
-    public void DinoRetainsPrefixTokensAndAppliesFinalNormalization()
+    [Theory]
+    [InlineData("layer")]
+    [InlineData("model.layer")]
+    [InlineData("encoder.layer")]
+    public void DinoRetainsPrefixTokensAndAppliesFinalNormalization(string layerPrefix)
     {
         string config = Path.GetTempFileName();
         try
@@ -80,7 +83,7 @@ public sealed class EncoderTests
             weights.Add("embeddings.patch_embeddings.bias", arange(8, dtype: ScalarType.Float32));
             weights.Add("embeddings.cls_token", arange(8, dtype: ScalarType.Float32).reshape(1, 1, 8));
             weights.Add("embeddings.register_tokens", arange(8, dtype: ScalarType.Float32).reshape(1, 1, 8).expand(1, 4, 8).clone());
-            const string p = "model.layer.0";
+            string p = layerPrefix + ".0";
             AddNorm(weights, p + ".norm1", 8); AddNorm(weights, p + ".norm2", 8); AddNorm(weights, "norm", 8);
             foreach (var projection in new[] { "q_proj", "k_proj", "v_proj", "o_proj" }) AddLinear(weights, p + ".attention." + projection, 8, 8);
             weights.Add(p + ".layer_scale1.lambda1", ones(8)); weights.Add(p + ".layer_scale2.lambda1", ones(8));

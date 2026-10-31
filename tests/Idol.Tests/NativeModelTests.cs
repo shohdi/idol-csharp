@@ -11,6 +11,17 @@ namespace Idol.Tests;
 public sealed class NativeModelTests
 {
     [Fact]
+    public void NativePositiveZBecomesPositiveYWithConsistentQuaternion()
+    {
+        using var scope = NewDisposeScope();
+        using var splats = new GaussianTensors(tensor(new[] { 0f, 0f, .25f }).reshape(1, 3),
+            zeros(1, 1, 3), ones(1, 3), tensor(new[] { 1f, 0f, 0f, 0f }).reshape(1, 4), full([1L, 1L], .5));
+        var cloud = Idol.Inference.IdolPipeline.ToCloud(splats, CancellationToken.None);
+        Assert.Equal(new System.Numerics.Vector3(0, .25f, 0), cloud.Points[0].Position);
+        var up = System.Numerics.Vector3.Transform(System.Numerics.Vector3.UnitZ, cloud.Points[0].Rotation);
+        Assert.True(System.Numerics.Vector3.Distance(up, System.Numerics.Vector3.UnitY) < 1e-5);
+    }
+    [Fact]
     public void SafetensorsReadsPublishedNumericTypesAndPreservesIntegerBuffers()
     {
         string path = Path.Combine(Path.GetTempPath(), $"idol-{Guid.NewGuid():N}.safetensors");

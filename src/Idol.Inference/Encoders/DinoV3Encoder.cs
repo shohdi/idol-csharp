@@ -29,8 +29,11 @@ public sealed class DinoV3Encoder
         theta = c.TryGetProperty("rope_theta", out var t) ? t.GetDouble() : 100;
         gated = c.TryGetProperty("use_gated_mlp", out var g) && g.GetBoolean();
         activation = c.TryGetProperty("hidden_act", out var a) ? a.GetString()! : "gelu";
-        // Transformers renamed encoder.layer to model.layer. Accommodate both official layouts.
-        layerPrefix = weights.Contains("model.layer.0.norm1.weight") ? "model.layer" : "encoder.layer";
+        // The pinned ViT-H+ checkpoint stores bare layer.* names. Other Transformers
+        // releases place those same layers under model.* or encoder.*.
+        layerPrefix = new[] { "layer", "model.layer", "encoder.layer" }.FirstOrDefault(
+            prefix => weights.Contains(prefix + ".0.norm1.weight")) ??
+            throw new InvalidDataException("Unrecognized DINOv3 transformer layer names in the checkpoint.");
     }
 
     /// <param name="pixels">RGB [B,3,H,W] in [0,1], normally 1024x1024.</param>

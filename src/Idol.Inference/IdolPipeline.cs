@@ -143,7 +143,7 @@ public sealed class IdolPipeline : IDisposable
         }
     }
 
-    private static GaussianCloud ToCloud(GaussianTensors tensors, CancellationToken ct)
+    internal static GaussianCloud ToCloud(GaussianTensors tensors, CancellationToken ct)
     {
         using var scope = NewDisposeScope();
         var xyz = tensors.Xyz.to(ScalarType.Float32).cpu().contiguous().data<float>().ToArray();
@@ -152,13 +152,15 @@ public sealed class IdolPipeline : IDisposable
         var rotations = tensors.Rotation.to(ScalarType.Float32).cpu().contiguous().data<float>().ToArray();
         var opacity = tensors.Opacity.to(ScalarType.Float32).cpu().contiguous().data<float>().ToArray();
         var points = new Gaussian[opacity.Length];
-        var x90 = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2);
+        // Native Z-up -> desktop/Unity Y-up. The SDK's +90 X export convention
+        // points positive native Z downward in these viewers; use -90 X here.
+        var x90 = Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2);
         for (int i = 0; i < points.Length; i++)
         {
             if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
             float alpha = Math.Clamp(opacity[i], 1e-6f, 1 - 1e-6f);
             var rotation = new Quaternion(rotations[i * 4 + 1], rotations[i * 4 + 2], rotations[i * 4 + 3], rotations[i * 4]);
-            points[i] = new Gaussian(new(xyz[i * 3], -xyz[i * 3 + 2], xyz[i * 3 + 1]),
+            points[i] = new Gaussian(new(xyz[i * 3], xyz[i * 3 + 2], -xyz[i * 3 + 1]),
                 new(dc[i * 3], dc[i * 3 + 1], dc[i * 3 + 2]), MathF.Log(alpha / (1 - alpha)),
                 new(MathF.Log(Math.Max(scales[i * 3], 1e-6f)), MathF.Log(Math.Max(scales[i * 3 + 1], 1e-6f)), MathF.Log(Math.Max(scales[i * 3 + 2], 1e-6f))),
                 Quaternion.Normalize(x90 * rotation));

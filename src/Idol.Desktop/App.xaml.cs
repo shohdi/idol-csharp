@@ -17,6 +17,8 @@ public partial class App : Application
             }
             try
             {
+                var photo = Argument("--generate");
+                if (photo != null) await window.GenerateImagePathAsync(photo);
                 var ply = Argument("--open-ply");
                 if (ply != null) await window.OpenPlyPathAsync(ply);
                 var capture = Argument("--capture");

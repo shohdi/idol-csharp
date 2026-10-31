@@ -45,17 +45,23 @@ public partial class MainWindow : Window
             Filter = "Photos|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff|All files|*.*"
         };
         if (dialog.ShowDialog(this) != true) return;
+        await GenerateImagePathAsync(dialog.FileName);
+    }
+
+    public async Task GenerateImagePathAsync(string path)
+    {
+        if (_busy) return;
         try
         {
             var image = new BitmapImage();
-            using var stream = File.OpenRead(dialog.FileName);
+            using var stream = File.OpenRead(path);
             image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.DecodePixelWidth = 520;
             image.StreamSource = stream; image.EndInit(); image.Freeze();
             PhotoPreview.Source = image;
         }
         catch { PhotoPreview.Source = null; }
         PhotoPlaceholder.Visibility = Visibility.Collapsed;
-        _imagePath = dialog.FileName; PhotoName.Text = Path.GetFileName(_imagePath);
+        _imagePath = path; PhotoName.Text = Path.GetFileName(_imagePath);
         await GenerateAsync();
     }
 

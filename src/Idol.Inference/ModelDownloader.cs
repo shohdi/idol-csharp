@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -97,6 +98,7 @@ public sealed class ModelDownloader : IDisposable
             try
             {
                 var total = offset;
+                var lastReport = Stopwatch.GetTimestamp();
                 while (true)
                 {
                     var count = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
@@ -104,7 +106,11 @@ public sealed class ModelDownloader : IDisposable
                     total += count;
                     if (total > file.Size) throw new InvalidDataException($"Unexpected download size: {file.LocalPath}.");
                     await destination.WriteAsync(buffer.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
-                    progress?.Report((double)total / file.Size);
+                    if (Stopwatch.GetElapsedTime(lastReport) >= TimeSpan.FromMilliseconds(250))
+                    {
+                        progress?.Report((double)total / file.Size);
+                        lastReport = Stopwatch.GetTimestamp();
+                    }
                 }
             }
             finally { ArrayPool<byte>.Shared.Return(buffer); }
@@ -135,7 +141,7 @@ public sealed class ModelDownloader : IDisposable
             string detail = reason.Contains("awaiting a review", StringComparison.OrdinalIgnoreCase)
                 ? "Your model access request is awaiting review by the model authors.\n"
                 : reason.Contains("enable access to public gated", StringComparison.OrdinalIgnoreCase)
-                    ? "Enable 'Read access to contents of all public gated repos you can access' in your fine-grained token settings. Inference-provider permission alone is insufficient.\n"
+                    ? "In your fine-grained token's Repositories section, check 'Read contents of public gated repos you can access' and save the change. Inference-provider permission alone is insufficient.\n"
                     : "Check that your token is valid and can read the approved gated repositories.\n";
             throw new ModelAccessException($"Hugging Face access is required for {file.Repository}.\n" + detail +
                 $"Accept the model's terms at https://huggingface.co/{file.Repository}, then enter a read token in Setup or set HF_TOKEN.\n" +
