@@ -1,0 +1,29 @@
+Idol Studio C# port
+Copyright 2026 Idol C# contributors
+
+This project contains C# adaptations of Speridlabs Idol inference code:
+https://github.com/speridlabs/idol-sdk
+Source revision: 4702a7f00850e34b6e83a2170cc123c3e9570744
+Upstream is distributed under the Apache License, Version 2.0.
+The implementation language, runtime integration, desktop application, exporters,
+memory management and checkpoint loading have been changed for this project.
+
+The Idol denoiser was adapted upstream from Hugging Face Diffusers' Wan transformer:
+Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
+Licensed under the Apache License, Version 2.0.
+
+DINOv3 implementation references Hugging Face Transformers:
+Copyright 2025 Meta AI and The HuggingFace Inc. team.
+Licensed under the Apache License, Version 2.0.
+https://github.com/huggingface/transformers/tree/main/src/transformers/models/dinov3_vit
+
+FLUX.2 VAE implementation references Hugging Face Diffusers (Apache-2.0):
+https://github.com/huggingface/diffusers
+
+NuGet dependencies retain their own licenses, including TorchSharp (.NET Foundation,
+MIT), LibTorch/PyTorch (BSD-style and bundled notices), and System.Drawing.Common
+(Microsoft, MIT). See the installed NuGet packages for full notices. NVIDIA runtime
+components retain their vendor terms. No model weights are redistributed here.
+
+Idol model weights and the DINOv3/FLUX.2 encoder weights have their own model terms.
+This project's Apache-2.0 license does not override those model terms.

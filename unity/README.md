@@ -1,0 +1,11 @@
+# Idol splats in Unity
+
+Copy the exported **Assets** folder into a Unity 2022.3 or later project. Drag the imported `.idolply` object into a scene. The importer creates its data asset and a prefab automatically. The file is standard binary 3DGS PLY with a custom extension to avoid conflicting with other PLY importers.
+
+The C# importer retains every Gaussian's position, DC color, opacity, anisotropic scale and quaternion. It reflects the Z coordinate into Unity's left-handed space. The included shader projects the 3D Gaussian covariance into an ellipse; this preserves the Gaussian representation rather than inventing a triangle surface.
+
+The renderer supports perspective cameras and requires a graphics API with structured buffers (Direct3D 11/12, Vulkan, or Metal). It sorts every Gaussian on the CPU per camera and uploads the order; large objects are expensive. It provides a Built-in pipeline render callback and an SRP end-camera callback. SRP composition, postprocessing and XR have not been validated. Splats blend with scene depth but do not cast shadows, receive lighting, support colliders or provide a watertight mesh. Multiple splat objects are sorted independently. Keep an explicit reference to `Idol/GaussianSplat` in Graphics > Always Included Shaders when making a player build if Unity strips it.
+
+This export is a renderer integration, not an FBX model. The app's optional OBJ export is a coarse colored ellipsoid proxy that loses translucent splat appearance; it is clearly labeled for that reason.
+
+Idol model and source: https://github.com/speridlabs/idol-sdk

@@ -1,0 +1,22 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet restore Idol.sln -p:IdolUseCuda=false
+      - run: dotnet build Idol.sln -c Release -p:IdolUseCuda=false --no-restore
+      - run: dotnet test tests/Idol.Tests -c Release -p:IdolUseCuda=false --no-build --no-restore
+      - run: dotnet publish src/Idol.Desktop -c Release -r win-x64 --self-contained true -p:IdolUseCuda=false -o artifacts/IdolStudio-cpu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IdolStudio-Windows-CPU
+          path: artifacts/IdolStudio-cpu

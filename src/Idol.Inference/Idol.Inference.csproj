@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Idol.Core\Idol.Core.csproj" />
+    <PackageReference Include="TorchSharp-cuda-windows" Version="0.107.0" Condition="'$(IdolUseCuda)' != 'false'" />
+    <PackageReference Include="TorchSharp" Version="0.107.0" Condition="'$(IdolUseCuda)' == 'false'" />
+    <PackageReference Include="libtorch-cpu-win-x64" Version="2.10.0" Condition="'$(IdolUseCuda)' == 'false'" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.22" />
+  </ItemGroup>
+</Project>
